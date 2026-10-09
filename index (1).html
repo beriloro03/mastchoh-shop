@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="tg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мастчоҳ — мағоза</title>
+<style>
+:root{--ink:#14213d;--bg:#f4f7fb;--card:#fff;--blue:#1d3a8a;--gold:#f2a900;--line:#dbe2ee;--red:#b3261e}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{position:sticky;top:0;z-index:5;background:var(--blue);color:#fff;display:flex;align-items:center;gap:8px;padding:12px 14px}
+header h1{font-size:20px;margin:0;flex:1}
+button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:10px 14px}
+.btn{background:var(--gold);color:var(--ink);font-weight:600}
+.ghost{background:transparent;color:inherit;border:1px solid currentColor}
+.sec{background:#e8edf7;color:var(--ink)}
+main{padding:14px;max-width:900px;margin:auto}
+.bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap}
+.bar h2{margin:0;font-size:18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.card img,.ph{width:100%;aspect-ratio:1;object-fit:cover;background:#e8edf7;display:flex;align-items:center;justify-content:center;font-size:34px}
+.card div.b{padding:10px;display:flex;flex-direction:column;gap:6px;flex:1}
+.name{font-weight:600}
+.price{color:var(--blue);font-weight:700}
+.card button{margin-top:auto}
+dialog{border:0;border-radius:14px;padding:18px;width:min(92vw,420px);color:var(--ink)}
+dialog::backdrop{background:rgba(20,33,61,.5)}
+label{display:block;font-size:14px;margin:10px 0 4px}
+input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+.row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.err{color:var(--red);font-size:14px;min-height:18px;margin-top:8px}
+.item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.qty button{padding:4px 10px}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;display:none;z-index:9}
+.empty{text-align:center;padding:30px 10px;color:#55627d}
+</style>
+</head>
+<body>
+<header>
+  <h1>Мастчоҳ</h1>
+  <button class="ghost" id="authBtn">Ворид шудан</button>
+  <button class="btn" id="cartBtn">Сабад (<span id="cnt">0</span>)</button>
+</header>
+<main>
+  <div class="bar">
+    <h2>Маҳсулот</h2>
+    <button class="sec" id="addBtn" style="display:none">+ Маҳсулоти нав</button>
+  </div>
+  <div id="list" class="grid"></div>
+  <div id="empty" class="empty" style="display:none">
+    Ҳоло маҳсулот нест.<br><br>
+    <button class="btn" id="seedBtn">Маҳсулоти намуна илова кардан</button>
+  </div>
+  <p id="loadErr" class="err"></p>
+</main>
+
+<dialog id="authDlg">
+  <h3 id="authTitle">Ворид шудан</h3>
+  <label>Почтаи электронӣ</label><input id="email" type="email" autocomplete="email">
+  <label>Парол (камаш 6 аломат)</label><input id="pass" type="password" autocomplete="current-password">
+  <div class="err" id="authErr"></div>
+  <div class="row">
+    <button class="btn" id="authGo">Ворид шудан</button>
+    <button class="sec" id="authSwitch">Сабти ном</button>
+    <button class="ghost" id="authClose">Пӯшидан</button>
+  </div>
+</dialog>
+
+<dialog id="cartDlg">
+  <h3>Сабади шумо</h3>
+  <div id="cartItems"></div>
+  <p><b>Ҷамъ: <span id="total">0</span> с.</b></p>
+  <div class="row">
+    <button class="btn" id="orderBtn">Фармоиш додан</button>
+    <button class="ghost" id="cartClose">Пӯшидан</button>
+  </div>
+  <div class="err" id="cartErr"></div>
+</dialog>
+
+<dialog id="prodDlg">
+  <h3>Маҳсулоти нав</h3>
+  <label>Ном</label><input id="pName">
+  <label>Нарх (сомонӣ)</label><input id="pPrice" type="number" min="0" inputmode="decimal">
+  <label>Пайванди акс (ихтиёрӣ)</label><input id="pImg" type="url" placeholder="https://...">
+  <div class="err" id="prodErr"></div>
+  <div class="row">
+    <button class="btn" id="prodSave">Захира кардан</button>
+    <button class="ghost" id="prodClose">Пӯшидан</button>
+  </div>
+</dialog>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.min.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyBw6U4sWMrVR3WMSolOLe5XyCAJ9vXfL78",
+  authDomain: "mastchoh-shop.firebaseapp.com",
+  projectId: "mastchoh-shop",
+  storageBucket: "mastchoh-shop.firebasestorage.app",
+  messagingSenderId: "90833071652",
+  appId: "1:90833071652:web:94b730e5024145902532b1"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const toast = t => { const e=$('toast'); e.textContent=t; e.style.display='block'; setTimeout(()=>e.style.display='none',2500); };
+
+let user = null, products = [], cart = {}, signup = false;
+
+/* ---------- Auth ---------- */
+auth.onAuthStateChanged(u => {
+  user = u;
+  $('authBtn').textContent = u ? 'Баромад' : 'Ворид шудан';
+  $('addBtn').style.display = u ? '' : 'none';
+});
+$('authBtn').onclick = () => {
+  if (user) { auth.signOut(); toast('Шумо баромадед'); }
+  else { $('authErr').textContent=''; $('authDlg').showModal(); }
+};
+$('authClose').onclick = () => $('authDlg').close();
+$('authSwitch').onclick = () => {
+  signup = !signup;
+  $('authTitle').textContent = signup ? 'Сабти ном' : 'Ворид шудан';
+  $('authGo').textContent = signup ? 'Сабти ном' : 'Ворид шудан';
+  $('authSwitch').textContent = signup ? 'Ман ном дорам' : 'Сабти ном';
+};
+const authMsg = c => ({
+  'auth/invalid-credential':'Почта ё парол нодуруст аст.',
+  'auth/email-already-in-use':'Ин почта аллакай сабт шудааст. Ворид шавед.',
+  'auth/weak-password':'Парол бояд камаш 6 аломат бошад.',
+  'auth/invalid-email':'Почтаи электронӣ нодуруст аст.',
+  'auth/network-request-failed':'Алоқа бо интернет нест.'
+}[c] || 'Хато: ' + c);
+$('authGo').onclick = async () => {
+  const e = $('email').value.trim(), p = $('pass').value;
+  try {
+    if (signup) await auth.createUserWithEmailAndPassword(e, p);
+    else await auth.signInWithEmailAndPassword(e, p);
+    $('authDlg').close(); toast('Хуш омадед!');
+  } catch (err) { $('authErr').textContent = authMsg(err.code); }
+};
+
+/* ---------- Products ---------- */
+db.collection('products').orderBy('createdAt','desc').onSnapshot(snap => {
+  products = snap.docs.map(d => ({id:d.id, ...d.data()}));
+  $('loadErr').textContent = '';
+  renderProducts();
+}, err => { $('loadErr').textContent = 'Маҳсулотро бор карда нашуд: ' + err.code; });
+
+function renderProducts() {
+  $('empty').style.display = products.length ? 'none' : 'block';
+  $('list').innerHTML = products.map(p => `
+    <div class="card">
+      ${p.img ? `<img src="${esc(p.img)}" alt="" loading="lazy">` : `<div class="ph">🛍️</div>`}
+      <div class="b">
+        <span class="name">${esc(p.name)}</span>
+        <span class="price">${esc(p.price)} с.</span>
+        <button class="btn" onclick="addToCart('${esc(p.id)}')">Ба сабад</button>
+      </div>
+    </div>`).join('');
+}
+$('addBtn').onclick = () => { $('prodErr').textContent=''; $('prodDlg').showModal(); };
+$('prodClose').onclick = () => $('prodDlg').close();
+$('prodSave').onclick = async () => {
+  const name = $('pName').value.trim(), price = parseFloat($('pPrice').value), img = $('pImg').value.trim();
+  if (!name || isNaN(price) || price < 0) { $('prodErr').textContent = 'Ном ва нархро дуруст ворид кунед.'; return; }
+  try {
+    await db.collection('products').add({name, price, img, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    $('pName').value = $('pPrice').value = $('pImg').value = '';
+    $('prodDlg').close(); toast('Маҳсулот илова шуд');
+  } catch (err) { $('prodErr').textContent = 'Хато: ' + err.code; }
+};
+$('seedBtn').onclick = async () => {
+  const demo = [['Чой сабз',25],['Асал (1 кг)',120],['Тӯппии дастӣ',60],['Чормағз (1 кг)',90]];
+  try {
+    for (const [name, price] of demo)
+      await db.collection('products').add({name, price, img:'', createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+  } catch (err) { $('loadErr').textContent = 'Хато: ' + err.code; }
+};
+
+/* ---------- Cart ---------- */
+window.addToCart = id => {
+  const p = products.find(x => x.id === id); if (!p) return;
+  cart[id] = cart[id] || {name:p.name, price:Number(p.price), qty:0};
+  cart[id].qty++; updateCart(); toast('Ба сабад илова шуд');
+};
+window.chg = (id, d) => { cart[id].qty += d; if (cart[id].qty <= 0) delete cart[id]; updateCart(); };
+function updateCart() {
+  const ids = Object.keys(cart);
+  $('cnt').textContent = ids.reduce((s,i)=>s+cart[i].qty,0);
+  $('total').textContent = ids.reduce((s,i)=>s+cart[i].qty*cart[i].price,0);
+  $('cartItems').innerHTML = ids.length ? ids.map(i => `
+    <div class="item"><span>${esc(cart[i].name)}<br><small>${cart[i].price} с.</small></span>
+    <span class="qty"><button class="sec" onclick="chg('${i}',-1)">−</button> ${cart[i].qty} <button class="sec" onclick="chg('${i}',1)">+</button></span></div>`).join('')
+    : '<p class="empty">Сабад холӣ аст.</p>';
+}
+$('cartBtn').onclick = () => { $('cartErr').textContent=''; updateCart(); $('cartDlg').showModal(); };
+$('cartClose').onclick = () => $('cartDlg').close();
+$('orderBtn').onclick = async () => {
+  const ids = Object.keys(cart);
+  if (!ids.length) { $('cartErr').textContent = 'Аввал маҳсулот интихоб кунед.'; return; }
+  if (!user) { $('cartDlg').close(); $('authDlg').showModal(); return; }
+  try {
+    await db.collection('orders').add({
+      uid: user.uid, email: user.email,
+      items: ids.map(i => cart[i]),
+      total: ids.reduce((s,i)=>s+cart[i].qty*cart[i].price,0),
+      status: 'nav',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    cart = {}; updateCart(); $('cartDlg').close(); toast('Фармоиш қабул шуд!');
+  } catch (err) { $('cartErr').textContent = 'Хато: ' + err.code; }
+};
+updateCart();
+</script>
+</body>
+</html>
